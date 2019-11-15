@@ -18,7 +18,6 @@
 # under the License.
 
 import hashlib
-import imp
 import importlib
 import os
 import sys
@@ -43,6 +42,8 @@ from airflow.utils.helpers import pprinttable
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.timeout import timeout
 
+if sys.version_info[0] < 3:
+    import imp
 
 class DagBag(BaseDagBag, LoggingMixin):
     """
@@ -235,7 +236,16 @@ class DagBag(BaseDagBag, LoggingMixin):
 
             with timeout(self.DAGBAG_IMPORT_TIMEOUT):
                 try:
-                    m = imp.load_source(mod_name, filepath)
+                    if sys.version_info[0] < 3:
+                        # Deprecated in Python 3
+                        m = imp.load_source(mod_name, filepath) 
+                    elif sys.version_info[1] < 6:
+                        # Deprecated in Python 3.6+
+                        m = importlib.machinery.SourceFileLoader(mod_name, ) 
+                    else:
+                        spec = importlib.util.spec_from_file_location(mod_name, filepath)
+                        m = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(m)
                     mods.append(m)
                 except Exception as e:
                     self.log.exception("Failed to import: %s", filepath)
