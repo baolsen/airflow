@@ -323,6 +323,7 @@ class SchedulerJob(BaseJob):
         'polymorphic_identity': 'SchedulerJob'
     }
     heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
+    job_heartbeat_sec = conf.getint('scheduler', 'JOB_HEARTBEAT_SEC')
 
     def __init__(
             self,
@@ -1054,9 +1055,7 @@ class SchedulerJob(BaseJob):
         # set TIs to queued state
         for task_instance in tis_to_set_to_queued:
             task_instance.state = State.QUEUED
-            task_instance.queued_dttm = (timezone.utcnow()
-                                         if not task_instance.queued_dttm
-                                         else task_instance.queued_dttm)
+            task_instance.queued_dttm = timezone.utcnow()
             session.merge(task_instance)
 
         # Generate a list of SimpleTaskInstance for the use of queuing
@@ -1169,7 +1168,15 @@ class SchedulerJob(BaseJob):
                     # The TI.try_number will return raw try_number+1 since the
                     # ti is not running. And we need to -1 to match the DB record.
                     TI._try_number == try_number - 1,
-                    TI.state == State.QUEUED)
+                    TI.state == State.QUEUED,
+                    # [AIRFLOW-6190] Give the executor time to run very new tasks.
+                    # Sometimes it may be delayed by its own heartbeat loop
+                    # so wait for at least job_heartbeat_sec to elapse
+                    # plus some extra before de-queueing a task
+                    TI.queued_dttm < (
+                        timezone.utcnow() - timedelta(seconds=self.job_heartbeat_sec+5)
+                        )
+                    )
                     for dag_id, task_id, execution_date, try_number
                     in self.executor.queued_tasks.keys()])
             ti_query = (session.query(TI)
