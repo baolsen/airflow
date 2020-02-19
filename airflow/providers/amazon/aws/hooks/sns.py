@@ -73,9 +73,6 @@ class AwsSnsHook(AwsBaseHook):
 
         :type message_attributes: dict
         """
-
-        conn = self.get_conn()
-
         publish_kwargs = {
             'TargetArn': target_arn,
             'MessageStructure': 'json',
@@ -92,4 +89,4 @@ class AwsSnsHook(AwsBaseHook):
                 key: _get_message_attribute(val) for key, val in message_attributes.items()
             }
 
-        return conn.publish(**publish_kwargs)
+        return self.get_conn().publish(**publish_kwargs)
