@@ -28,8 +28,12 @@ class AWSAthenaHook(AwsBaseHook):
     """
     Interact with AWS Athena to run, poll queries and return query results
 
-    :param aws_conn_id: aws connection to use.
-    :type aws_conn_id: str
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
+
     :param sleep_time: Time to wait between two consecutive call to check query status on athena
     :type sleep_time: int
     """

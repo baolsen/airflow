@@ -28,8 +28,11 @@ class AwsLogsHook(AwsBaseHook):
     """
     Interact with AWS CloudWatch Logs
 
-    :param region_name: AWS Region Name (example: us-west-2)
-    :type region_name: str
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
     def __init__(self, region_name=None, *args, **kwargs):

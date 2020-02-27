@@ -47,6 +47,14 @@ class AwsBaseHook(BaseHook):
     :param verify: Whether or not to verify SSL certificates.
         https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html
     :type verify: str or bool
+    :param str region_name: AWS Region name to use. If this is None then the default boto3
+        behaviour is used.
+    :param str client_type: boto3 client_type used when creating boto3.client(). For
+        example, 's3', 'emr', etc. Provided by specific hooks for these clients which
+        subclass AwsBaseHook.
+    :param str resource_type: boto3 resource_type used when creating boto3.resource(). For
+        example, 's3'. Provided by specific hooks for these resources which
+        subclass AwsBaseHook.
     """
 
     def __init__(self, aws_conn_id="aws_default", verify=None):
@@ -231,6 +239,38 @@ class AwsBaseHook(BaseHook):
         return session.resource(
             resource_type, endpoint_url=endpoint_url, config=config, verify=self.verify
         )
+
+    @cached_property
+    def conn(self):
+        """Get the underlying boto3 client (cached).
+
+        The return value from this method is cached for efficiency.
+
+        :return: boto3.client or boto3.resource for the current
+            client/resource type and region
+        :rtype: boto3.client() or boto3.resource()
+        :raises AirflowException: self.client_type or self.resource_type are not
+            populated. These are usually specified to this class, by a subclass
+            __init__ method.
+        """
+        if self.client_type:
+            return self.get_client_type(self.client_type, region_name=self.region_name)
+        elif self.resource_type:
+            return self.get_resource_type(self.resource_type, region_name=self.region_name)
+        else:
+            raise AirflowException(
+                'Either self.client_type or self.resource_type'
+                ' must be specified in the subclass')
+
+    def get_conn(self):
+        """ Get the underlying boto3 client (cached)
+
+        This method is just a simple wrapper that calls the conn method
+            so that caching works as intended. It exists for compatibility
+            with subclasses that rely on a super().get_conn() method.
+        """
+        # Compat shim
+        return self.conn
 
     def get_session(self, region_name=None):
         """Get the underlying boto3.session."""

@@ -124,6 +124,12 @@ def secondary_training_status_message(job_description, prev_description):
 class SageMakerHook(AwsBaseHook):
     """
     Interact with Amazon SageMaker.
+
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
     non_terminal_states = {'InProgress', 'Stopping'}
     endpoint_non_terminal_states = {'Creating', 'Updating', 'SystemUpdating',

@@ -40,6 +40,12 @@ def _get_message_attribute(o):
 class AwsSnsHook(AwsBaseHook):
     """
     Interact with Amazon Simple Notification Service.
+
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
     def __init__(self, *args, **kwargs):

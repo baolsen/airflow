@@ -29,10 +29,13 @@ class AWSDataSyncHook(AwsBaseHook):
     """
     Interact with AWS DataSync.
 
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
     .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
         :class:`~airflow.providers.amazon.aws.operators.datasync.AWSDataSyncOperator`
 
-    :param str aws_conn_id: AWS connection to use.
     :param int wait_for_task_execution: Time to wait between two
         consecutive calls to check TaskExecution status.
     :raises ValueError: If wait_interval_seconds is not between 0 and 15*60 seconds.

@@ -24,6 +24,12 @@ class EmrHook(AwsBaseHook):
     """
     Interact with AWS EMR. emr_conn_id is only necessary for using the
     create_job_flow method.
+
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
     def __init__(self, emr_conn_id=None, region_name=None, *args, **kwargs):

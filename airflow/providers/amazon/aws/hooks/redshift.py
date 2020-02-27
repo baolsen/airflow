@@ -25,6 +25,12 @@ from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
 class RedshiftHook(AwsBaseHook):
     """
     Interact with AWS Redshift, using the boto3 library
+
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
     def get_conn(self):
         return self.get_client_type('redshift')

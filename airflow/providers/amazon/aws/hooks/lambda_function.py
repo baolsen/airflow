@@ -26,6 +26,12 @@ class AwsLambdaHook(AwsBaseHook):
     """
     Interact with AWS Lambda
 
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
+
     :param function_name: AWS Lambda Function Name
     :type function_name: str
     :param region_name: AWS Region Name (example: us-west-2)

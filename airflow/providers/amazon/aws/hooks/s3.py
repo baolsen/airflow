@@ -90,6 +90,12 @@ def unify_bucket_name_and_key(func):
 class S3Hook(AwsBaseHook):
     """
     Interact with AWS S3, using the boto3 library.
+
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
     def get_conn(self):

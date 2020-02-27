@@ -26,10 +26,14 @@ class AwsFirehoseHook(AwsBaseHook):
     """
     Interact with AWS Kinesis Firehose.
 
+    Additional arguments (such as ``aws_conn_id``) may be specified and
+        are passed down to the underlying AwsBaseHook.
+
+    .. seealso::
+        :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
+
     :param delivery_stream: Name of the delivery stream
     :type delivery_stream: str
-    :param region_name: AWS region name (example: us-east-1)
-    :type region_name: str
     """
 
     def __init__(self, delivery_stream, region_name=None, *args, **kwargs):
