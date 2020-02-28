@@ -56,7 +56,6 @@ class SQSSensor(BaseSensorOperator):
         self.aws_conn_id = aws_conn_id
         self.max_messages = max_messages
         self.wait_time_seconds = wait_time_seconds
-        self.hook = SQSHook(aws_conn_id=self.aws_conn_id)
 
     def poke(self, context):
         """
@@ -66,7 +65,9 @@ class SQSSensor(BaseSensorOperator):
         :type context: dict
         :return: ``True`` if message is available or ``False``
         """
-        sqs_conn = self.hook.get_conn()
+
+        sqs_hook = SQSHook(aws_conn_id=self.aws_conn_id)
+        sqs_conn = sqs_hook.get_conn()
 
         self.log.info('SQSSensor checking for message on queue: %s', self.sqs_queue)
 
