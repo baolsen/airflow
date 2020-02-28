@@ -84,7 +84,9 @@ class CloudFormationDeleteStackSensor(BaseSensorOperator):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.stack_name = stack_name
-        self.hook = AWSCloudFormationHook(aws_conn_id=aws_conn_id, region_name=region_name)
+        self.aws_conn_id = aws_conn_id
+        self.region_name = region_name
+        self.hook = None
 
     def poke(self, context):
         stack_status = self.hook.get_stack_status(self.stack_name)
@@ -93,3 +95,9 @@ class CloudFormationDeleteStackSensor(BaseSensorOperator):
         if stack_status == 'DELETE_IN_PROGRESS':
             return False
         raise ValueError(f'Stack {self.stack_name} in bad state: {stack_status}')
+
+    def get_hook(self):
+        """Create and return an AWSCloudFormationHook."""
+        if not self.hook:
+            self.hook = AWSCloudFormationHook(aws_conn_id=self.aws_conn_id, region_name=self.region_name)
+        return self.hook

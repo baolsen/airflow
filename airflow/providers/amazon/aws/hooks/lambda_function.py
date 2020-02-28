@@ -34,34 +34,22 @@ class AwsLambdaHook(AwsBaseHook):
 
     :param function_name: AWS Lambda Function Name
     :type function_name: str
-    :param region_name: AWS Region Name (example: us-west-2)
-    :type region_name: str
     :param log_type: Tail Invocation Request
     :type log_type: str
     :param qualifier: AWS Lambda Function Version or Alias Name
     :type qualifier: str
     :param invocation_type: AWS Lambda Invocation Type (RequestResponse, Event etc)
     :type invocation_type: str
-    :param config: Configuration for botocore client.
-        (https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html)
-    :type config: botocore.client.Config
     """
 
-    def __init__(self, function_name, region_name=None,
+    def __init__(self, function_name,
                  log_type='None', qualifier='$LATEST',
-                 invocation_type='RequestResponse', config=None, *args, **kwargs):
+                 invocation_type='RequestResponse', *args, **kwargs):
         self.function_name = function_name
-        self.region_name = region_name
         self.log_type = log_type
         self.invocation_type = invocation_type
         self.qualifier = qualifier
-        self.conn = None
-        self.config = config
-        super().__init__(*args, **kwargs)
-
-    def get_conn(self):
-        self.conn = self.get_client_type('lambda', self.region_name, config=self.config)
-        return self.conn
+        super().__init__(*args, client_type='lambda', **kwargs)
 
     def invoke_lambda(self, payload):
         """

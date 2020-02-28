@@ -52,11 +52,8 @@ class AWSDataSyncHook(AwsBaseHook):
     TASK_EXECUTION_FAILURE_STATES = ("ERROR",)
     TASK_EXECUTION_SUCCESS_STATES = ("SUCCESS",)
 
-    def __init__(
-        self, aws_conn_id="aws_default", wait_interval_seconds=5, *args, **kwargs
-    ):
-        super().__init__(aws_conn_id, *args, **kwargs)
-        self.conn = None
+    def __init__(self, wait_interval_seconds=5, *args, **kwargs):
+        super().__init__(*args, client_type='datasync', **kwargs)
         self.locations = []
         self.tasks = []
         # wait_interval_seconds = 0 is used during unit tests
@@ -64,15 +61,6 @@ class AWSDataSyncHook(AwsBaseHook):
             raise ValueError("Invalid wait_interval_seconds %s" %
                              wait_interval_seconds)
         self.wait_interval_seconds = wait_interval_seconds
-
-    def get_conn(self):
-        """Sets and returns AWS DataSync client.
-
-        :return: A boto3 client for AWS DataSync.
-        """
-        if not self.conn:
-            self.conn = self.get_client_type("datasync")
-        return self.conn
 
     def create_location(self, location_uri, **create_location_kwargs):
         r"""Creates a new location.

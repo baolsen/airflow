@@ -49,7 +49,7 @@ class SageMakerTransformSensor(SageMakerBaseSensor):
         return SageMakerHook.failed_states
 
     def get_sagemaker_response(self):
-        sagemaker = SageMakerHook(aws_conn_id=self.aws_conn_id)
+        sagemaker = self.get_hook()
 
         self.log.info('Poking Sagemaker Transform Job %s', self.job_name)
         return sagemaker.describe_transform_job(self.job_name)

@@ -73,7 +73,7 @@ class SageMakerTrainingSensor(SageMakerBaseSensor):
         return SageMakerHook.failed_states
 
     def get_sagemaker_response(self):
-        sagemaker_hook = SageMakerHook(aws_conn_id=self.aws_conn_id)
+        sagemaker = self.get_hook()
         if self.print_log:
             if not self.log_resource_inited:
                 self.init_log_resource(sagemaker_hook)

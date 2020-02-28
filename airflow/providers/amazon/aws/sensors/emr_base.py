@@ -19,6 +19,7 @@
 from typing import Any, Dict, Optional
 
 from airflow.exceptions import AirflowException
+from airflow.providers.amazon.aws.hooks.emr import EmrHook
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 
@@ -48,6 +49,7 @@ class EmrBaseSensor(BaseSensorOperator):
         self.aws_conn_id = aws_conn_id
         self.target_states = None  # will be set in subclasses
         self.failed_states = None  # will be set in subclasses
+        self.hook = None
 
     def poke(self, context):
         response = self.get_emr_response()
@@ -106,3 +108,9 @@ class EmrBaseSensor(BaseSensorOperator):
         """
         raise NotImplementedError(
             'Please implement failure_message_from_response() in subclass')
+
+    def get_hook(self):
+        """Create and return an EmrHook."""
+        if not self.hook:
+            self.hook = EmrHook(aws_conn_id=self.aws_conn_id)
+        return self.hook

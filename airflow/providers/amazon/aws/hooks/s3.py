@@ -98,8 +98,8 @@ class S3Hook(AwsBaseHook):
         :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
-    def get_conn(self):
-        return self.get_client_type('s3')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, client_type='s3', **kwargs)
 
     @staticmethod
     def parse_s3_url(s3url):

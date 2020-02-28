@@ -26,6 +26,7 @@ This module contains Base AWS Hook.
 
 import configparser
 import logging
+from typing import Optional, Union
 
 import boto3
 from botocore.config import Config
@@ -46,21 +47,41 @@ class AwsBaseHook(BaseHook):
     :type aws_conn_id: str
     :param verify: Whether or not to verify SSL certificates.
         https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html
-    :type verify: str or bool
-    :param str region_name: AWS Region name to use. If this is None then the default boto3
+    :type verify: Union[bool, str, None]
+    :param region_name: AWS Region name to use. If this is None then the default boto3
         behaviour is used.
-    :param str client_type: boto3 client_type used when creating boto3.client(). For
+    :type region_name: Optional[str]
+    :param client_type: boto3 client_type used when creating boto3.client(). For
         example, 's3', 'emr', etc. Provided by specific hooks for these clients which
         subclass AwsBaseHook.
-    :param str resource_type: boto3 resource_type used when creating boto3.resource(). For
+    :type client_type: Optional[str]
+    :param resource_type: boto3 resource_type used when creating boto3.resource(). For
         example, 's3'. Provided by specific hooks for these resources which
         subclass AwsBaseHook.
+    :type resource_type: Optional[str]
+    :param config: Configuration for botocore client.
+        (https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html)
+    :type config: Optional[botocore.client.Config]
     """
 
-    def __init__(self, aws_conn_id="aws_default", verify=None):
+    def __init__(
+            self,
+            aws_conn_id: [str] = "aws_default",
+            verify: Union[bool, str, None] = None,
+            region_name: Optional[str] = None,
+            client_type: Optional[str] = None,
+            resource_type: Optional[str] = None,
+            config: Optional[botocore.client.Config] = None
+    ):
+        if not aws_conn_id:
+            raise AirflowException('aws_conn_id must be provided.')
         self.aws_conn_id = aws_conn_id
         self.verify = verify
-        self.config = None
+        self.config = config
+        if not (self.client_type or self.resource_type):
+            raise AirflowException(
+                'Either client_type or resource_type'
+                ' must be specified.')
 
     def _get_credentials(self, region_name):
         aws_access_key_id = None

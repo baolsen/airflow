@@ -42,20 +42,9 @@ class AWSAthenaHook(AwsBaseHook):
     FAILURE_STATES = ('FAILED', 'CANCELLED',)
     SUCCESS_STATES = ('SUCCEEDED',)
 
-    def __init__(self, aws_conn_id='aws_default', sleep_time=30, *args, **kwargs):
-        super().__init__(aws_conn_id, *args, **kwargs)
+    def __init__(self, sleep_time=30, *args, **kwargs):
+        super().__init__(*args, client_type='athena', **kwargs)
         self.sleep_time = sleep_time
-        self.conn = None
-
-    def get_conn(self):
-        """
-        check if aws conn exists already or create one and return it
-
-        :return: boto3 session
-        """
-        if not self.conn:
-            self.conn = self.get_client_type('athena')
-        return self.conn
 
     def run_query(self, query, query_context, result_configuration, client_request_token=None,
                   workgroup='primary'):

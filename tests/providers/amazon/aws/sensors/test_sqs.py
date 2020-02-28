@@ -18,7 +18,7 @@
 
 
 import unittest
-from unittest.mock import MagicMock, patch
+import unittest.mock as mock
 
 from moto import mock_sqs
 
@@ -47,7 +47,7 @@ class TestSQSSensor(unittest.TestCase):
             aws_conn_id='aws_default'
         )
 
-        self.mock_context = MagicMock()
+        self.mock_context = mock.MagicMock()
         self.sqs_hook = SQSHook()
 
     @mock_sqs

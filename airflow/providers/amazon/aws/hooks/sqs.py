@@ -33,14 +33,8 @@ class SQSHook(AwsBaseHook):
         :class:`~airflow.providers.amazon.aws.hooks.base_aws.AwsBaseHook`
     """
 
-    def get_conn(self):
-        """
-        Get the SQS client using boto3 library
-
-        :return: SQS client
-        :rtype: botocore.client.SQS
-        """
-        return self.get_client_type('sqs')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, client_type='sqs', **kwargs)
 
     def create_queue(self, queue_name, attributes=None):
         """

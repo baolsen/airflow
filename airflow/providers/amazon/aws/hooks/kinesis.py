@@ -36,19 +36,9 @@ class AwsFirehoseHook(AwsBaseHook):
     :type delivery_stream: str
     """
 
-    def __init__(self, delivery_stream, region_name=None, *args, **kwargs):
+    def __init__(self, delivery_stream, *args, **kwargs):
         self.delivery_stream = delivery_stream
-        self.region_name = region_name
-        self.conn = None
-        super().__init__(*args, **kwargs)
-
-    def get_conn(self):
-        """
-        Returns AWS connection object.
-        """
-
-        self.conn = self.get_client_type('firehose', self.region_name)
-        return self.conn
+        super().__init__(*args, client_type='firehose', **kwargs)
 
     def put_records(self, records):
         """

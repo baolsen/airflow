@@ -49,15 +49,7 @@ class AwsSnsHook(AwsBaseHook):
     """
 
     def __init__(self, *args, **kwargs):
-        self.conn = None
-        super().__init__(*args, **kwargs)
-
-    def get_conn(self):
-        """
-        Get an SNS connection
-        """
-        self.conn = self.get_client_type('sns')
-        return self.conn
+        super().__init__(*args, client_type='sns', **kwargs)
 
     def publish_to_target(self, target_arn, message, subject=None, message_attributes=None):
         """

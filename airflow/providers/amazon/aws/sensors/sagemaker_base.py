@@ -16,6 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 from airflow.exceptions import AirflowException
+from airflow.providers.amazon.aws.hooks.sagemaker import SageMakerHook
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 
@@ -36,6 +37,7 @@ class SageMakerBaseSensor(BaseSensorOperator):
             *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.aws_conn_id = aws_conn_id
+        self.hook = None
 
     def poke(self, context):
         response = self.get_sagemaker_response()
@@ -76,3 +78,9 @@ class SageMakerBaseSensor(BaseSensorOperator):
     def state_from_response(self, response):
         """Placeholder for extracting the state from an AWS response."""
         raise NotImplementedError('Please implement state_from_response() in subclass')
+
+    def get_hook(self):
+        """Create and return an SageMakerHook."""
+        if not self.hook:
+            self.hook = SageMakerHook(aws_conn_id=self.aws_conn_id)
+        return self.hook
