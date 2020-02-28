@@ -26,9 +26,16 @@ class EmrHook(AwsBaseHook):
     create_job_flow method.
     """
 
-    def __init__(self, emr_conn_id=None, *args, **kwargs):
+    def __init__(self, emr_conn_id=None, region_name=None, *args, **kwargs):
         self.emr_conn_id = emr_conn_id
-        super().__init__(client_type='emr', *args, **kwargs)
+        self.region_name = region_name
+        self.conn = None
+        super().__init__(*args, **kwargs)
+
+    def get_conn(self):
+        if not self.conn:
+            self.conn = self.get_client_type('emr', self.region_name)
+        return self.conn
 
     def get_cluster_id_by_name(self, emr_cluster_name, cluster_states):
         """
@@ -41,7 +48,9 @@ class EmrHook(AwsBaseHook):
         :return: id of the EMR cluster
         """
 
-        response = self.get_conn().list_clusters(
+        conn = self.get_conn()
+
+        response = conn.list_clusters(
             ClusterStates=cluster_states
         )
 

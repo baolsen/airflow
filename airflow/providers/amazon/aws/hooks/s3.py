@@ -92,8 +92,8 @@ class S3Hook(AwsBaseHook):
     Interact with AWS S3, using the boto3 library.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(client_type='s3', *args, **kwargs)
+    def get_conn(self):
+        return self.get_client_type('s3')
 
     @staticmethod
     def parse_s3_url(s3url):
@@ -155,8 +155,9 @@ class S3Hook(AwsBaseHook):
         :param region_name: The name of the aws region in which to create the bucket.
         :type region_name: str
         """
+        s3_conn = self.get_conn()
         if not region_name:
-            region_name = self.get_conn().meta.region_name
+            region_name = s3_conn.meta.region_name
         if region_name == 'us-east-1':
             self.get_conn().create_bucket(Bucket=bucket_name)
         else:

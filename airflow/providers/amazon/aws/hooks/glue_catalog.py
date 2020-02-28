@@ -33,8 +33,21 @@ class AwsGlueCatalogHook(AwsBaseHook):
     :type region_name: str
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(client_type='glue', *args, **kwargs)
+    def __init__(self,
+                 aws_conn_id='aws_default',
+                 region_name=None,
+                 *args,
+                 **kwargs):
+        self.region_name = region_name
+        self.conn = None
+        super().__init__(aws_conn_id=aws_conn_id, *args, **kwargs)
+
+    def get_conn(self):
+        """
+        Returns glue connection object.
+        """
+        self.conn = self.get_client_type('glue', self.region_name)
+        return self.conn
 
     def get_partitions(self,
                        database_name,

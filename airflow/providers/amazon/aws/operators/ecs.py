@@ -135,7 +135,7 @@ class ECSOperator(BaseOperator):  # pylint: disable=too-many-instance-attributes
         if self.awslogs_region is None:
             self.awslogs_region = region_name
 
-        self.hook = None
+        self.hook = self.get_hook()
 
     def execute(self, context):
         self.log.info(
@@ -144,7 +144,10 @@ class ECSOperator(BaseOperator):  # pylint: disable=too-many-instance-attributes
         )
         self.log.info('ECSOperator overrides: %s', self.overrides)
 
-        self.client = self.get_hook().get_conn()
+        self.client = self.hook.get_client_type(
+            'ecs',
+            region_name=self.region_name
+        )
 
         run_opts = {
             'cluster': self.cluster,
@@ -229,14 +232,10 @@ class ECSOperator(BaseOperator):  # pylint: disable=too-many-instance-attributes
                         format(container.get('reason', '').lower()))
 
     def get_hook(self):
-        """Create and return an AwsHook."""
-        if not self.hook:
-            self.hook = AwsBaseHook(
-                aws_conn_id=self.aws_conn_id,
-                client_type='ecs',
-                region_name=self.region_name
-            )
-        return self.hook
+        """Create and return an AwsBaseHook."""
+        return AwsBaseHook(
+            aws_conn_id=self.aws_conn_id
+        )
 
     def get_logs_hook(self):
         """Create and return an AwsLogsHook."""

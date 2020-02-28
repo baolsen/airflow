@@ -32,16 +32,28 @@ class AwsFirehoseHook(AwsBaseHook):
     :type region_name: str
     """
 
-    def __init__(self, delivery_stream, *args, **kwargs):
+    def __init__(self, delivery_stream, region_name=None, *args, **kwargs):
         self.delivery_stream = delivery_stream
-        super().__init__(client_type='firehose', *args, **kwargs)
+        self.region_name = region_name
+        self.conn = None
+        super().__init__(*args, **kwargs)
+
+    def get_conn(self):
+        """
+        Returns AWS connection object.
+        """
+
+        self.conn = self.get_client_type('firehose', self.region_name)
+        return self.conn
 
     def put_records(self, records):
         """
         Write batch records to Kinesis Firehose
         """
 
-        response = self.get_conn().put_record_batch(
+        firehose_conn = self.get_conn()
+
+        response = firehose_conn.put_record_batch(
             DeliveryStreamName=self.delivery_stream,
             Records=records
         )

@@ -27,8 +27,14 @@ class SQSHook(AwsBaseHook):
     Interact with Amazon Simple Queue Service.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(client_type='sqs', *args, **kwargs)
+    def get_conn(self):
+        """
+        Get the SQS client using boto3 library
+
+        :return: SQS client
+        :rtype: botocore.client.SQS
+        """
+        return self.get_client_type('sqs')
 
     def create_queue(self, queue_name, attributes=None):
         """

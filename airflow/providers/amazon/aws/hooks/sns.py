@@ -43,7 +43,15 @@ class AwsSnsHook(AwsBaseHook):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(client_type='sns', *args, **kwargs)
+        self.conn = None
+        super().__init__(*args, **kwargs)
+
+    def get_conn(self):
+        """
+        Get an SNS connection
+        """
+        self.conn = self.get_client_type('sns')
+        return self.conn
 
     def publish_to_target(self, target_arn, message, subject=None, message_attributes=None):
         """
@@ -66,7 +74,6 @@ class AwsSnsHook(AwsBaseHook):
         :type message_attributes: dict
         """
 
-<<<<<<< HEAD
         conn = self.get_conn()
 
         publish_kwargs = {
@@ -86,22 +93,3 @@ class AwsSnsHook(AwsBaseHook):
             }
 
         return conn.publish(**publish_kwargs)
-=======
-        messages = {
-            'default': message
-        }
-
-        if subject is None:
-            return self.get_conn().publish(
-                TargetArn=target_arn,
-                Message=json.dumps(messages),
-                MessageStructure='json'
-            )
-
-        return self.get_conn().publish(
-            TargetArn=target_arn,
-            Message=json.dumps(messages),
-            MessageStructure='json',
-            Subject=subject
-        )
->>>>>>> [AIRFLOW-6822] AWS hooks should cache boto3 client
