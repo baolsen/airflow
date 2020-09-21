@@ -22,14 +22,12 @@ Utilities for running or stopping processes
 import errno
 import logging
 import os
-import pty
+import platform
 import select
 import shlex
 import signal
 import subprocess
 import sys
-import termios
-import tty
 from contextlib import contextmanager
 from typing import Dict, List
 
@@ -38,6 +36,11 @@ from lockfile.pidlockfile import PIDLockFile
 
 from airflow.configuration import conf
 from airflow.exceptions import AirflowException
+
+if platform.system() != 'Windows':
+    import termios
+    import pty
+    import tty
 
 log = logging.getLogger(__name__)
 
@@ -157,6 +160,8 @@ def execute_interactive(cmd: List[str], **kwargs):
     the process is completed.
     """
     log.info("Executing cmd: %s", " ".join([shlex.quote(c) for c in cmd]))
+    if platform.system() == 'Windows':
+        raise NotImplementedError('execute_interactive is not supported on Windows')
 
     old_tty = termios.tcgetattr(sys.stdin)
     tty.setraw(sys.stdin.fileno())

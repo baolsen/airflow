@@ -21,6 +21,8 @@ Create, get, update, execute and delete an AWS DataSync Task.
 
 import logging
 import random
+import time
+from typing import List
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
@@ -46,6 +48,8 @@ class AWSDataSyncOperator(BaseOperator):
     :param str aws_conn_id: AWS connection to use.
     :param int wait_interval_seconds: Time to wait between two
         consecutive calls to check TaskExecution status.
+    :param int wait_max_iterations: Number of iterations to wait when checking
+        TaskExection status, before failing this Airflow task.
     :param str task_arn: AWS DataSync TaskArn to use. If None, then this operator will
         attempt to either search for an existing Task or attempt to create a new Task.
     :param str source_location_uri: Source location URI to search for. All DataSync
@@ -85,6 +89,8 @@ class AWSDataSyncOperator(BaseOperator):
         ``boto3.start_task_execution(TaskArn=task_arn, **task_execution_kwargs)``
     :param bool delete_task_after_execution: If True then the TaskArn which was executed
         will be deleted from AWS DataSync on successful completion.
+    :param book cancel_on_exception: If True then the TaskExecutionArn will be
+        cancelled if an AirflowException occurred, this is also re-raised.
     :raises AirflowException: If ``task_arn`` was not specified, or if
         either ``source_location_uri`` or ``destination_location_uri`` were
         not specified.
@@ -105,12 +111,20 @@ class AWSDataSyncOperator(BaseOperator):
     )
     ui_color = "#44b5e2"
 
+    # Control when we execute a Task, based on initial Task status
+    TASK_STATUS_CANCEL_BEFORE_WAIT: List[str] = list()
+    TASK_STATUS_WAIT_BEFORE_START: List[str] = ['CREATING']
+    TASK_STATUS_START: List[str] = ['AVAILABLE']
+    TASK_STATUS_SKIP_START: List[str] = list()
+    TASK_STATUS_FAIL: List[str] = ['UNAVAILABLE', 'QUEUED', 'RUNNING']
+
     @apply_defaults
     def __init__(
         self,
-        *,
+        *args,
         aws_conn_id="aws_default",
-        wait_interval_seconds=5,
+        wait_interval_seconds=30,  # 30 sec
+        wait_max_iterations=2 * 60,  # 1hr
         task_arn=None,
         source_location_uri=None,
         destination_location_uri=None,
@@ -122,13 +136,15 @@ class AWSDataSyncOperator(BaseOperator):
         update_task_kwargs=None,
         task_execution_kwargs=None,
         delete_task_after_execution=False,
+        cancel_on_exception=True,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
         # Assignments
         self.aws_conn_id = aws_conn_id
         self.wait_interval_seconds = wait_interval_seconds
+        self.wait_max_iterations = wait_max_iterations
 
         self.task_arn = task_arn
 
@@ -137,17 +153,18 @@ class AWSDataSyncOperator(BaseOperator):
         self.allow_random_task_choice = allow_random_task_choice
         self.allow_random_location_choice = allow_random_location_choice
 
-        self.create_task_kwargs = create_task_kwargs if create_task_kwargs else {}
-        self.create_source_location_kwargs = {}
+        self.create_task_kwargs = create_task_kwargs if create_task_kwargs else dict()
+        self.create_source_location_kwargs = dict()
         if create_source_location_kwargs:
             self.create_source_location_kwargs = create_source_location_kwargs
-        self.create_destination_location_kwargs = {}
+        self.create_destination_location_kwargs = dict()
         if create_destination_location_kwargs:
             self.create_destination_location_kwargs = create_destination_location_kwargs
 
-        self.update_task_kwargs = update_task_kwargs if update_task_kwargs else {}
-        self.task_execution_kwargs = task_execution_kwargs if task_execution_kwargs else {}
+        self.update_task_kwargs = update_task_kwargs if update_task_kwargs else dict()
+        self.task_execution_kwargs = task_execution_kwargs if task_execution_kwargs else dict()
         self.delete_task_after_execution = delete_task_after_execution
+        self.cancel_on_exception = cancel_on_exception
 
         # Validations
         valid = False
@@ -174,6 +191,7 @@ class AWSDataSyncOperator(BaseOperator):
         self.source_location_arn = None
         self.destination_location_arn = None
         self.task_execution_arn = None
+        self.task_status = None
 
     def get_hook(self):
         """Create and return AWSDataSyncHook.
@@ -206,12 +224,22 @@ class AWSDataSyncOperator(BaseOperator):
 
         self.log.info("Using DataSync TaskArn %s", self.task_arn)
 
-        # Update the DataSync Task
+        # Update the DataSync Task definition
         if self.update_task_kwargs:
             self._update_datasync_task()
 
-        # Execute the DataSync Task
-        self._execute_datasync_task()
+        try:
+            self._execute_datasync_task()
+        # Help keep Airflow and DataSync better aligned in terms of status.
+        # Eg if the task is Queued or in Running due to a problem
+        # Then attempt cancelling it before terminating the Airflow task
+        except AirflowException as e:
+            # First log the Exception message in case cancellation causes another Exception
+            # Eg Session has timed out
+            self.log.error(e)
+            if self.cancel_on_exception:
+                self._cancel_datasync_task_execution()
+            raise e
 
         if not self.task_execution_arn:
             raise AirflowException("Nothing was executed")
@@ -224,8 +252,6 @@ class AWSDataSyncOperator(BaseOperator):
 
     def _get_tasks_and_locations(self):
         """Find existing DataSync Task based on source and dest Locations."""
-        hook = self.get_hook()
-
         self.candidate_source_location_arns = self._get_location_arns(self.source_location_uri)
 
         self.candidate_destination_location_arns = self._get_location_arns(self.destination_location_uri)
@@ -239,7 +265,7 @@ class AWSDataSyncOperator(BaseOperator):
             return
 
         self.log.info("Finding DataSync TaskArns that have these LocationArns")
-        self.candidate_task_arns = hook.get_task_arns_for_location_arns(
+        self.candidate_task_arns = self.get_hook().get_task_arns_for_location_arns(
             self.candidate_source_location_arns,
             self.candidate_destination_location_arns,
         )
@@ -275,12 +301,10 @@ class AWSDataSyncOperator(BaseOperator):
 
     def _create_datasync_task(self):
         """Create a AWS DataSyncTask."""
-        hook = self.get_hook()
-
         self.source_location_arn = self.choose_location(self.candidate_source_location_arns)
         if not self.source_location_arn and self.create_source_location_kwargs:
             self.log.info('Attempting to create source Location')
-            self.source_location_arn = hook.create_location(
+            self.source_location_arn = self.get_hook().create_location(
                 self.source_location_uri, **self.create_source_location_kwargs
             )
         if not self.source_location_arn:
@@ -291,7 +315,7 @@ class AWSDataSyncOperator(BaseOperator):
         self.destination_location_arn = self.choose_location(self.candidate_destination_location_arns)
         if not self.destination_location_arn and self.create_destination_location_kwargs:
             self.log.info('Attempting to create destination Location')
-            self.destination_location_arn = hook.create_location(
+            self.destination_location_arn = self.get_hook().create_location(
                 self.destination_location_uri, **self.create_destination_location_kwargs
             )
         if not self.destination_location_arn:
@@ -300,7 +324,7 @@ class AWSDataSyncOperator(BaseOperator):
             )
 
         self.log.info("Creating a Task.")
-        self.task_arn = hook.create_task(
+        self.task_arn = self.get_hook().create_task(
             self.source_location_arn, self.destination_location_arn, **self.create_task_kwargs
         )
         if not self.task_arn:
@@ -310,53 +334,138 @@ class AWSDataSyncOperator(BaseOperator):
 
     def _update_datasync_task(self):
         """Update a AWS DataSyncTask."""
-        hook = self.get_hook()
         self.log.info("Updating TaskArn %s", self.task_arn)
-        hook.update_task(self.task_arn, **self.update_task_kwargs)
+        self.get_hook().update_task(self.task_arn, **self.update_task_kwargs)
         self.log.info("Updated TaskArn %s", self.task_arn)
         return self.task_arn
 
     def _execute_datasync_task(self):
         """Create and monitor an AWSDataSync TaskExecution for a Task."""
-        hook = self.get_hook()
 
+        # Wait for the Task to be in a valid state to Start
+        self._get_status_before_start()
+        self.log.info('Task status is %s.', self.task_status)
+
+        if self.task_status in self.TASK_STATUS_START:
+            self.log.info('The Task will be started because its status is in %s.', self.TASK_STATUS_START)
+            # Start the DataSync Task
+            self._start_datasync_task()
+        elif self.task_status in self.TASK_STATUS_SKIP_START:
+            self.log.info(
+                'The Task will NOT be started because its status is in %s.', self.TASK_STATUS_SKIP_START
+            )
+            if not self.task_execution_arn:
+                task_description = self.get_hook().get_task_description(self.task_arn)
+                if 'CurrentTaskExecutionArn' in task_description:
+                    self.task_execution_arn = task_description['CurrentTaskExecutionArn']
+                else:
+                    raise AirflowException(
+                        'Starting the Task was skipped,' ' but no CurrentTaskExecutionArn was found.'
+                    )
+        elif self.task_status in self.TASK_STATUS_FAIL:
+            raise AirflowException(
+                'Task cannot be started because its status is in %s.' % self.TASK_STATUS_FAIL
+            )
+        else:
+            raise AirflowException('Unexpected task status %s.' % self.task_status)
+
+        self._wait_for_datasync_task_execution()
+
+    def _get_status_before_start(self):
+        """
+        Get Task into a valid status for starting. Cancel a task (where necessary)
+        and then wait until the Task can be started.
+
+        The Task will first be cancelled if its Status is in TASK_STATUS_CANCEL_BEFORE_WAIT.
+        Then, wait for the Task Status to not be in TASK_STATUS_WAIT_BEFORE_START.
+        Uses wait_interval_seconds and wait_max_iterations which are also used
+        when waiting for a started TaskExecution to complete.
+        """
+        task_description = self.get_hook().get_task_description(self.task_arn)
+        self.task_status = task_description['Status']
+
+        # Cancel the task if necessary
+        if self.task_status in self.TASK_STATUS_CANCEL_BEFORE_WAIT:
+            self.log.info(
+                'The Task will be cancelled because its status is in %s.',
+                self.TASK_STATUS_CANCEL_BEFORE_WAIT,
+            )
+            if 'CurrentTaskExecutionArn' in task_description:
+                self.task_execution_arn = task_description['CurrentTaskExecutionArn']
+                self._cancel_datasync_task_execution()
+                self.task_execution_arn = None
+            # Refresh task status
+            self.task_status = self.get_hook().get_task_description(self.task_arn)['Status']
+        
+        iteration = 0
+        while self.task_status in self.TASK_STATUS_WAIT_BEFORE_START:
+            self.log.info(
+                'Task status is %s.' ' Waiting for it to not be %s.' ' Iteration %s/%s.',
+                self.task_status,
+                self.TASK_STATUS_WAIT_BEFORE_START,
+                iteration,
+                self.wait_max_iterations,
+            )
+            time.sleep(self.wait_interval_seconds)
+            self.task_status = self.get_hook().get_task_description(self.task_arn)['Status']
+            iteration += 1
+            if iteration >= self.wait_max_iterations:
+                break
+
+    def _start_datasync_task(self):
+        """Create an AWSDataSync TaskExecution for a Task."""
         # Create a task execution:
         self.log.info("Starting execution for TaskArn %s", self.task_arn)
-        self.task_execution_arn = hook.start_task_execution(self.task_arn, **self.task_execution_kwargs)
+        self.task_execution_arn = self.get_hook().start_task_execution(
+            self.task_arn, **self.task_execution_kwargs
+        )
         self.log.info("Started TaskExecutionArn %s", self.task_execution_arn)
 
+    def _wait_for_datasync_task_execution(self):
+        """Monitor an AWSDataSync TaskExecution for a Task."""
+        if not self.task_execution_arn:
+            raise AirflowException(
+                'Unable to wait for TaskExecutionArn to complete' ' because none was provided'
+            )
         # Wait for task execution to complete
         self.log.info("Waiting for TaskExecutionArn %s", self.task_execution_arn)
-        result = hook.wait_for_task_execution(self.task_execution_arn)
+        result = self.get_hook().wait_for_task_execution(self.task_execution_arn)
         self.log.info("Completed TaskExecutionArn %s", self.task_execution_arn)
-        task_execution_description = hook.describe_task_execution(task_execution_arn=self.task_execution_arn)
+        task_execution_description = self.get_hook().describe_task_execution(
+            task_execution_arn=self.task_execution_arn
+        )
         self.log.info("task_execution_description=%s", task_execution_description)
 
         # Log some meaningful statuses
         level = logging.ERROR if not result else logging.INFO
         self.log.log(level, 'Status=%s', task_execution_description['Status'])
-        for k, v in task_execution_description['Result'].items():
-            if 'Status' in k or 'Error' in k:
-                self.log.log(level, '%s=%s', k, v)
+        if 'Result' in task_execution_description:
+            for k, v in task_execution_description['Result'].items():
+                if 'Status' in k or 'Error' in k:
+                    self.log.log(level, '%s=%s', k, v)
 
         if not result:
             raise AirflowException("Failed TaskExecutionArn %s" % self.task_execution_arn)
         return self.task_execution_arn
 
-    def on_kill(self):
+    def _cancel_datasync_task_execution(self):
         """Cancel the submitted DataSync task."""
-        hook = self.get_hook()
         if self.task_execution_arn:
             self.log.info("Cancelling TaskExecutionArn %s", self.task_execution_arn)
-            hook.cancel_task_execution(task_execution_arn=self.task_execution_arn)
+            self.get_hook().cancel_task_execution(task_execution_arn=self.task_execution_arn)
             self.log.info("Cancelled TaskExecutionArn %s", self.task_execution_arn)
+            # Dont reset task_execution_arn as it is useful for determining
+            # what was executed and printing description of errors to the log
+            # self.task_execution_arn = None
+
+    def on_kill(self):
+        self._cancel_datasync_task_execution()
 
     def _delete_datasync_task(self):
         """Deletes an AWS DataSync Task."""
-        hook = self.get_hook()
         # Delete task:
         self.log.info("Deleting Task with TaskArn %s", self.task_arn)
-        hook.delete_task(self.task_arn)
+        self.get_hook().delete_task(self.task_arn)
         self.log.info("Task Deleted")
         return self.task_arn
 

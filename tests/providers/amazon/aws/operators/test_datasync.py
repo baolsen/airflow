@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
 import unittest
 from unittest import mock
 
@@ -37,6 +38,8 @@ try:
 
     # ToDo: Remove after the moto>1.3.14 is released and contains following commit:
     # https://github.com/spulec/moto/commit/5cfbe2bb3d24886f2b33bb4480c60b26961226fc
+    # For now testing is done (not skipped) using a local pip install of the latest
+    # moto dev version, eg 'pip install moto==1.3.15.dev432'. See the moto release page.
     if "create_task" not in dir(DataSyncBackend) or "delete_task" not in dir(DataSyncBackend):
         mock_datasync = no_datasync
 except ImportError:
@@ -749,6 +752,31 @@ class TestAWSDataSyncOperator(AWSDataSyncTestCaseBase):
         # ### Check mocks:
         mock_get_conn.assert_called()
 
+    @mock.patch.object(AWSDataSyncHook, "wait_for_task_execution")
+    @mock.patch.object(AWSDataSyncHook, "cancel_task_execution")
+    def test_exception_task(self, mock_cancel, mock_wait, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        # ### Begin tests:
+
+        # Raise exception when doing wait_for_task_execution
+        msg = 'Something went wrong with DataSync'
+
+        def raise_task(*args):
+            raise AirflowException(msg)
+
+        mock_wait.side_effect = raise_task
+
+        self.set_up_operator()
+
+        # Execute the task
+        with self.assertRaises(AirflowException, msg=msg):
+            self.datasync.execute(None)
+
+        # Verify the task was cancelled
+        # ### Check mocks:
+        mock_cancel.assert_called()
+
     def test_execute_specific_task(self, mock_get_conn):
         # ### Set up mocks:
         mock_get_conn.return_value = self.client
@@ -872,3 +900,125 @@ class TestAWSDataSyncOperatorDelete(AWSDataSyncTestCaseBase):
         self.assertEqual(pushed_task_arn, self.task_arn)
         # ### Check mocks:
         mock_get_conn.assert_called()
+
+
+@mock_datasync
+@mock.patch.object(AWSDataSyncHook, "get_conn")
+@mock.patch.object(AWSDataSyncHook, "get_task_description")
+@unittest.skipIf(mock_datasync == no_datasync, "moto datasync package missing")  # pylint: disable=W0143
+class TestAWSDataSyncOperatorTaskStatus(AWSDataSyncTestCaseBase):
+    def set_up_operator(self, task_arn="self"):
+        if task_arn == "self":
+            task_arn = self.task_arn
+        # Create operator
+        self.datasync = AWSDataSyncOperator(
+            task_id="test_aws_datasync_task_status",
+            dag=self.dag,
+            task_arn=task_arn,
+            wait_interval_seconds=0,
+        )
+
+    def test_task_status_wait_before_start_wait(self, mock_get, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        # Set the Task Status to CREATING and transition it to AVAILABLE thereafter
+        mock_get.side_effect = [{'Status': 'CREATING'}, {'Status': 'CREATING'}, {'Status': 'AVAILABLE'}]
+        # ### Begin tests:
+        self.set_up_operator()
+        self.datasync.execute(None)
+
+        self.assertEqual(mock_get.call_count, 3)
+
+    def test_task_status_wait_before_start_no_wait(self, mock_get, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [{'Status': 'AVAILABLE'}, {'Status': 'AVAILABLE'}, {'Status': 'AVAILABLE'}]
+        # ### Begin tests:
+        self.set_up_operator()
+        self.datasync.execute(None)
+
+        self.assertEqual(mock_get.call_count, 1)
+
+    def test_task_status_custom(self, mock_get, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [{'Status': 'CUSTOM'}, {'Status': 'AVAILABLE'}]
+        # ### Begin tests:
+        self.set_up_operator()
+        self.datasync.TASK_STATUS_WAIT_BEFORE_START = ['CUSTOM', 'WAIT', 'STATUSES']
+        self.datasync.execute(None)
+
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_task_status_start(self, mock_get, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [{'Status': 'AVAILABLE'}]
+        # ### Begin tests:
+        task_arn = self.client.create_task(
+            SourceLocationArn=self.source_location_arn,
+            DestinationLocationArn=self.destination_location_arn,
+        )["TaskArn"]
+
+        self.set_up_operator(task_arn=task_arn)
+        result = self.datasync.execute(None)
+
+        self.assertEqual(result["TaskArn"], task_arn)
+        self.assertEqual(self.datasync.task_arn, task_arn)
+        # ### Check mocks:
+        mock_get_conn.assert_called()
+        mock_get.assert_called_with(task_arn)
+
+    @mock.patch.object(AWSDataSyncOperator, "_start_datasync_task")
+    def test_task_status_skip_start(self, mock_start, mock_get, mock_get_conn):
+        # Create and start a Task
+        task_arn = self.client.create_task(
+            SourceLocationArn=self.source_location_arn,
+            DestinationLocationArn=self.destination_location_arn,
+        )["TaskArn"]
+        task_execution_arn = self.client.start_task_execution(TaskArn=task_arn)['TaskExecutionArn']
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [
+            {'Status': 'RUNNING', 'CurrentTaskExecutionArn': task_execution_arn},
+            {'Status': 'RUNNING', 'CurrentTaskExecutionArn': task_execution_arn},
+        ]
+        # ### Begin tests:
+        self.set_up_operator(task_arn=task_arn)
+        self.datasync.TASK_STATUS_SKIP_START = ['RUNNING']
+        result = self.datasync.execute(None)
+
+        self.assertEqual(result["TaskArn"], task_arn)
+        self.assertEqual(self.datasync.task_arn, task_arn)
+        mock_start.assert_not_called()
+
+    @mock.patch.object(AWSDataSyncOperator, "_start_datasync_task")
+    def test_task_status_skip_start_fail(self, mock_start, mock_get, mock_get_conn):
+        # Create and start a Task
+        task_arn = self.client.create_task(
+            SourceLocationArn=self.source_location_arn,
+            DestinationLocationArn=self.destination_location_arn,
+        )["TaskArn"]
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [{'Status': 'RUNNING'}, {'Status': 'RUNNING'}]
+        # ### Begin tests:
+        self.set_up_operator(task_arn=task_arn)
+        with self.assertRaises(AirflowException):
+            self.datasync.execute(None)
+
+        mock_start.assert_not_called()
+
+    def test_task_status_fail_start(self, mock_get, mock_get_conn):
+        # ### Set up mocks:
+        mock_get_conn.return_value = self.client
+        mock_get.side_effect = [{'Status': 'INVALID'}, {'Status': 'INVALID'}]
+        # ### Begin tests:
+        task_arn = self.client.create_task(
+            SourceLocationArn=self.source_location_arn,
+            DestinationLocationArn=self.destination_location_arn,
+        )["TaskArn"]
+
+        self.set_up_operator(task_arn=task_arn)
+        with self.assertRaises(AirflowException):
+            self.datasync.execute(None)
